@@ -1,0 +1,21 @@
+[project]
+name = "minimax-h3-server"
+version = "0.1.0"
+description = "Local MiniMax H3 video generation service"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "python-multipart>=0.0.9,<1",
+  "psutil>=6,<8",
+]
+
+[project.scripts]
+minimax-h3-server = "server.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["server"]

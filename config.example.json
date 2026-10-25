@@ -1,0 +1,30 @@
+{
+  "api": { "host": "127.0.0.1", "port": 8787 },
+  "admin": { "port": 8788 },
+  "http": { "maxRequestBytes": 536870912 },
+  "paths": {
+    "h3Binary": "/absolute/path/to/h3",
+    "modelDir": "/absolute/path/to/minimax-h3",
+    "h3Cwd": "/absolute/path/to/h3.c",
+    "dbDir": "/absolute/path/to/db",
+    "uploadTempDir": "/absolute/path/to/uploads",
+    "artifactDir": "/absolute/path/to/artifacts",
+    "logDir": "/absolute/path/to/logs"
+  },
+  "auth": { "tokens": ["replace-with-random-token"] },
+  "resources": { "maxConcurrentJobs": 1 },
+  "logging": { "level": "INFO" },
+  "h3": {
+    "hardwareArgs": ["--ssd-streaming"],
+    "taskDefaults": {
+      "width": 512,
+      "height": 512,
+      "layers": 50,
+      "steps": 20,
+      "reuse": 1,
+      "coreReuse": 1,
+      "seed": "42",
+      "frames": 107
+    }
+  }
+}
