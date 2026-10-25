@@ -4,7 +4,7 @@
 
 ## 公共对象
 
-- `server.config.load_config(path: Path) -> ServerConfig`：读取并验证配置；`ServerConfig` 的字段为 `api_host`, `api_port`, `admin_port`, `max_request_bytes`, `h3_binary`, `model_dir`, `h3_cwd`, `db_dir`, `upload_temp_dir`, `artifact_dir`, `log_dir`, `tokens`, `max_concurrent_jobs`, `log_level`, `hardware_args`, `task_defaults`。
+- `server.config.load_config(path: Path) -> ServerConfig`：读取并验证配置；`ServerConfig` 的字段为 `api_host`, `api_port`, `admin_port`, `max_request_bytes`, `h3_binary`, `model_dir`, `h3_cwd`, `db_dir`, `upload_temp_dir`, `artifact_dir`, `log_dir`, `tokens`, `max_concurrent_jobs`, `log_level`, `hardware_args`, `render_width`, `render_height`, `task_defaults`。内部渲染尺寸来自硬件参数，可为 `None`；若设置则成对且为 32 倍数。
 - `server.contracts.ApiError(status_code, code, message)`：所有业务 HTTP 错误；响应体是 `{"error":{"code":...,"message":...}}`。404、409、410、413、429、507 与设计稿一致。
 - `server.contracts.TaskRecord`：任务查询结果使用 API 风格键名 `processCreateTime`, `progressPercent`, `errorMessage`, `createdAt` 等；`request`, `execution`, `inputs` 为解析后的 JSON 值，不向调用方泄漏 SQLite 的 `_json` 列。
 - `TaskInput` 的 `path` 是相对于任务上传目录 `<uploadTempDir>/<taskId>/` 的服务生成路径；`role` 为 `firstFrame`、`lastFrame`、`reference`、`referenceAudio`；参考索引从 0 开始并保持用户顺序。原始文件名仅供展示，不能用来构造服务器路径。
@@ -37,7 +37,7 @@ TaskRunner.poll_once() -> None
 TaskRunner.recover_pending() -> None
 ```
 
-`start_task` 从 DAO 读取已保存的 `request/execution/inputs`，生成 h3 argv，以 `start_new_session=True` 启动子进程并登记 PID/创建时间。`Popen` 之后的失败由 runner 负责：若 PID 落库失败，停止该进程组并记录失败；无法落库时保留可恢复的日志与专属输出路径。`poll_once` 和 `recover_pending` 均为同步阻塞函数，由主应用用 `asyncio.to_thread` 调度；正常退出服务不终止 h3。服务重启后先恢复，再开放 HTTP 监听。runner 不写 SQL。
+`start_task` 从 DAO 读取已保存的 `request/execution/inputs`，生成 h3 argv，以 `start_new_session=True` 启动子进程并登记 PID/创建时间。**一旦调用 `start_task`，无论失败发生在 `Popen` 前后，任务失败结算均由 runner 负责**；若 PID 落库失败，停止该进程组并记录失败，无法落库时保留可恢复的日志与专属输出路径。`poll_once` 和 `recover_pending` 均为同步阻塞函数，由主应用用 `asyncio.to_thread` 调度；正常退出服务不终止 h3。服务重启后先恢复，再开放 HTTP 监听。runner 不写 SQL。
 
 ## HTTP：`server/task_api.py`（代理 C）
 
@@ -45,7 +45,7 @@ TaskRunner.recover_pending() -> None
 create_task_router(config: ServerConfig, auth: AuthManager, runner: TaskRunner) -> APIRouter
 ```
 
-两个 FastAPI app 复用同一个 router。路由通过 `auth.require_task_auth(request, write=...)` 识别 API Bearer 或后台 session。`POST /v1/tasks` 仅声明 `Request`，顺序固定为鉴权 → `claim_task` 占槽 → 解析 multipart → 校验/保存输入 → `save_prepared` → `await asyncio.to_thread(runner.start_task, task_id)`。启动前任何错误由 HTTP 删除 `preparing` 记录并清理上传暂存；启动后由 runner 负责。整个请求上限通过按原始 ASGI `receive` 字节计数实施，不能靠 `Content-Length` 或默认 Starlette part 上限替代。读取/写入大文件、媒体元信息操作不能阻塞事件循环。创建返回 202，满载直接返回 429 且不读取请求体。
+两个 FastAPI app 复用同一个 router。路由通过 `auth.require_task_auth(request, write=...)` 识别 API Bearer 或后台 session。`POST /v1/tasks` 仅声明 `Request`，顺序固定为鉴权 → `claim_task` 占槽 → 解析 multipart → 校验/保存输入 → `save_prepared` → `await asyncio.to_thread(runner.start_task, task_id)`。调用 `start_task` 之前任何错误由 HTTP 删除 `preparing` 记录并清理上传暂存；调用之后由 runner 负责失败结算，HTTP 不再删除任务记录。整个请求上限通过按原始 ASGI `receive` 字节计数实施，不能靠 `Content-Length` 或默认 Starlette part 上限替代。读取/写入大文件、媒体元信息操作不能阻塞事件循环。创建返回 202，满载直接返回 429 且不读取请求体。
 
 ## 认证、管理页面与装配
 

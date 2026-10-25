@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>MiniMax H3 本机管理</title>
+  <link rel="stylesheet" href="/assets/admin.css">
+  <script src="/assets/admin.js" defer></script>
+</head>
+<body>
+  <header class="siteHeader">
+    <div>
+      <p class="eyebrow">LOCAL GENERATION SERVICE</p>
+      <h1>MiniMax H3 <span>任务管理</span></h1>
+    </div>
+    <div class="headerActions">
+      <span id="connectionState" class="connectionState" aria-live="polite">连接中</span>
+      <button id="logoutButton" class="subtleButton" type="button" hidden>退出登录</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="loginPanel" class="loginPanel" hidden aria-labelledby="loginTitle">
+      <div class="loginCard">
+        <p class="eyebrow">ADMIN ACCESS</p>
+        <h2 id="loginTitle">登录本机管理台</h2>
+        <p>输入服务配置文件中的 Token。</p>
+        <form id="loginForm">
+          <label for="tokenInput">Token</label>
+          <input id="tokenInput" name="token" type="password" autocomplete="off" required>
+          <button type="submit">登录</button>
+        </form>
+        <p id="loginError" class="formMessage errorText" role="alert"></p>
+      </div>
+    </section>
+
+    <div id="dashboard" hidden>
+      <section class="summaryBar" aria-label="任务概览">
+        <div class="summaryItem"><span>运行名额</span><strong id="activeCount">—</strong></div>
+        <div class="summaryItem"><span>进行中</span><strong id="runningCount">—</strong></div>
+        <div class="summaryItem"><span>已记录任务</span><strong id="totalCount">—</strong></div>
+        <button id="refreshButton" class="subtleButton" type="button">刷新</button>
+      </section>
+
+      <div class="workspaceGrid">
+        <section class="panel createPanel" aria-labelledby="createTitle">
+          <div class="panelHeading"><div><p class="eyebrow">NEW GENERATION</p><h2 id="createTitle">创建任务</h2></div></div>
+          <form id="taskForm">
+            <label for="promptInput">提示词 <span class="requiredMark">*</span></label>
+            <textarea id="promptInput" rows="6" required placeholder="描述画面、动作、镜头与声音"></textarea>
+
+            <label for="conditioningMode">素材模式</label>
+            <select id="conditioningMode">
+              <option value="text">仅提示词</option>
+              <option value="frames">首帧 / 尾帧</option>
+              <option value="references">有序参考</option>
+            </select>
+            <div id="frameFields" class="modeFields" hidden>
+              <label for="firstFrameInput">首帧图片</label>
+              <input id="firstFrameInput" type="file" accept="image/*">
+              <label for="lastFrameInput">尾帧图片</label>
+              <input id="lastFrameInput" type="file" accept="image/*">
+            </div>
+            <div id="referenceFields" class="modeFields" hidden>
+              <p class="fieldHint">参考顺序就是提交给模型的顺序。视频加独立音频时需选择两个文件。</p>
+              <div id="referenceList" class="referenceList"></div>
+              <button id="addReferenceButton" class="subtleButton" type="button">添加参考</button>
+              <p id="referenceLimit" class="fieldHint"></p>
+            </div>
+
+            <details class="parameterDetails" open>
+              <summary>生成参数</summary>
+              <p class="fieldHint">默认值来自服务配置，可在本次任务中修改。</p>
+              <div class="parameterGrid">
+                <label for="widthInput">宽度<input id="widthInput" data-parameter="width" type="number" step="32" required></label>
+                <label for="heightInput">高度<input id="heightInput" data-parameter="height" type="number" step="32" required></label>
+                <label for="layersInput">Layers<input id="layersInput" data-parameter="layers" type="number" step="1" required></label>
+                <label for="stepsInput">Steps<input id="stepsInput" data-parameter="steps" type="number" step="1" required></label>
+                <label for="reuseInput">Reuse<input id="reuseInput" data-parameter="reuse" type="number" step="1" required></label>
+                <label for="coreReuseInput">Core reuse<input id="coreReuseInput" data-parameter="coreReuse" type="number" step="1" required></label>
+                <label for="seedInput">Seed<input id="seedInput" data-parameter="seed" type="text" inputmode="numeric" pattern="[0-9]+" required></label>
+                <label for="durationMode">时长方式<select id="durationMode"><option value="seconds">秒数</option><option value="frames">帧数</option></select></label>
+                <label for="durationInput">时长 / 帧数<input id="durationInput" type="number" min="1" step="any" required></label>
+              </div>
+              <p id="parameterHint" class="fieldHint"></p>
+            </details>
+            <button id="submitTaskButton" class="primaryButton" type="submit">开始烧制</button>
+            <p id="taskFormMessage" class="formMessage" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <div class="taskColumn">
+          <section class="panel" aria-labelledby="activeTitle">
+            <div class="panelHeading"><div><p class="eyebrow">LIVE QUEUE</p><h2 id="activeTitle">进行中</h2></div></div>
+            <div id="activeTasks" class="taskList"></div>
+          </section>
+          <section class="panel" aria-labelledby="historyTitle">
+            <div class="panelHeading"><div><p class="eyebrow">ARCHIVE</p><h2 id="historyTitle">历史任务</h2></div></div>
+            <div id="historyTasks" class="taskList"></div>
+            <button id="loadMoreButton" class="subtleButton loadMoreButton" type="button" hidden>加载更多</button>
+          </section>
+        </div>
+
+        <section class="panel detailPanel" aria-labelledby="detailTitle">
+          <div class="panelHeading"><div><p class="eyebrow">TASK DETAIL</p><h2 id="detailTitle">任务详情</h2></div></div>
+          <div id="detailEmpty" class="emptyState">选择一个任务查看详情。</div>
+          <div id="detailContent" hidden>
+            <div class="detailTop"><code id="detailId"></code><span id="detailStatus" class="statusBadge"></span></div>
+            <p id="detailProgress" class="detailMeta"></p>
+            <p id="detailDates" class="detailMeta"></p>
+            <p id="detailError" class="errorText" hidden></p>
+            <h3>提示词</h3><pre id="detailPrompt" class="textBlock"></pre>
+            <details open><summary>请求参数</summary><pre id="detailRequest" class="jsonBlock"></pre></details>
+            <details><summary>实际执行参数</summary><pre id="detailExecution" class="jsonBlock"></pre></details>
+            <h3>引用素材</h3><div id="detailInputs" class="inputList"></div>
+            <h3>烧制日志</h3><pre id="detailLog" class="logBlock"></pre>
+            <div id="artifactSection" hidden><h3>成品</h3><video id="artifactVideo" controls preload="metadata"></video><a id="artifactDownload" class="downloadLink" download>下载 MP4</a></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

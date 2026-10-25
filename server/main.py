@@ -11,9 +11,10 @@ import tempfile
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
 
 from server.auth import AuthManager
 from server.config import ServerConfig, load_config
@@ -39,6 +40,8 @@ def _prepare_directories(config: ServerConfig) -> None:
 
 def _configure_logging(config: ServerConfig) -> None:
     handler = logging.FileHandler(config.log_dir / "service.log", encoding="utf-8")
+    if os.name == "posix":
+        os.chmod(config.log_dir / "service.log", 0o600)
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     logging.basicConfig(level=config.log_level, handlers=[handler, logging.StreamHandler()], force=True)
 
@@ -149,6 +152,8 @@ def main() -> None:
     os.umask(0o077)
     try:
         asyncio.run(run_service(load_config(args.config)))
+    except KeyboardInterrupt:
+        return
     except (OSError, ValueError, RuntimeError) as exc:
         raise SystemExit(f"minimax-h3-server: {exc}") from exc
 

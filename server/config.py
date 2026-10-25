@@ -6,7 +6,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 
@@ -27,6 +27,8 @@ class ServerConfig:
     max_concurrent_jobs: int
     log_level: int
     hardware_args: tuple[str, ...]
+    render_width: int | None
+    render_height: int | None
     task_defaults: dict
 
     @property
@@ -102,7 +104,7 @@ def _task_defaults(value: object) -> dict:
             raise ValueError("h3.taskDefaults.frames is outside the supported range")
     else:
         seconds = defaults["seconds"]
-        if isinstance(seconds, bool) or not isinstance(seconds, (int, float, str)):
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
             raise ValueError("h3.taskDefaults.seconds must be a positive number")
         try:
             duration = Decimal(str(seconds))
@@ -110,7 +112,7 @@ def _task_defaults(value: object) -> dict:
             raise ValueError("h3.taskDefaults.seconds must be a positive number") from exc
         if not duration.is_finite() or duration <= 0:
             raise ValueError("h3.taskDefaults.seconds must be a positive number")
-        requested_frames = int(duration * 24)
+        requested_frames = int((duration * 24).to_integral_value(rounding=ROUND_HALF_UP))
         aligned = 5 + 17 * max(1, (requested_frames - 5 + 16) // 17)
         if not 22 <= aligned <= 362:
             raise ValueError("h3.taskDefaults.seconds is outside the supported range")
@@ -126,12 +128,15 @@ def _hardware_args(value: object) -> tuple[str, ...]:
         "--reuse", "--layers", "--core-reuse", "--seed",
         "--first-frame", "--last-frame", "--ref-image", "--ref-video",
         "--ref-silent-video", "--ref-video-audio", "--ref-audio",
-        "--frames-dir", "--info", "-h", "--help",
+        "--ref-image-size", "--frames-dir", "--show", "--zoom",
+        "--info", "-h", "--help", "--",
     }
     for item in value:
         if "\x00" in item:
             raise ValueError("h3.hardwareArgs may not contain NUL")
-        if item in controlled or any(item.startswith(option + "=") for option in controlled):
+        if (item in controlled
+                or any(item.startswith(option + "=") for option in controlled)
+                or item.startswith(("-d", "-p", "-o"))):
             raise ValueError(f"h3.hardwareArgs may not override {item}")
     flags = set(value)
     if "--ssd-streaming" in flags and "--use-int8-row-fc2" in flags:
@@ -139,6 +144,28 @@ def _hardware_args(value: object) -> tuple[str, ...]:
     if "--use-int8-row-fc2" in flags and "--use-slower-bf16-mlp" in flags:
         raise ValueError("--use-int8-row-fc2 conflicts with --use-slower-bf16-mlp")
     return tuple(value)
+
+
+def _render_size(args: tuple[str, ...], option: str) -> int | None:
+    values: list[str] = []
+    for index, item in enumerate(args):
+        if item == option:
+            if index + 1 >= len(args):
+                raise ValueError(f"{option} needs a value")
+            values.append(args[index + 1])
+        elif item.startswith(option + "="):
+            values.append(item[len(option) + 1:])
+    if len(values) > 1:
+        raise ValueError(f"{option} may appear only once")
+    if not values:
+        return None
+    value = values[0]
+    if not value.isascii() or not value.isdecimal():
+        raise ValueError(f"{option} must be a positive multiple of 32")
+    number = int(value)
+    if number < 32 or number % 32:
+        raise ValueError(f"{option} must be a positive multiple of 32")
+    return number
 
 
 def load_config(path: Path) -> ServerConfig:
@@ -187,6 +214,16 @@ def load_config(path: Path) -> ServerConfig:
         raise ValueError("paths.modelDir is not a directory")
     if not h3_cwd.is_dir() or not (h3_cwd / "h3_shaders.metal").is_file():
         raise ValueError("paths.h3Cwd must contain h3_shaders.metal")
+    hardware_args = _hardware_args(h3.get("hardwareArgs", []))
+    render_width = _render_size(hardware_args, "--render-width")
+    render_height = _render_size(hardware_args, "--render-height")
+    if (render_width is None) != (render_height is None):
+        raise ValueError("--render-width and --render-height must be set together")
+    task_defaults = _task_defaults(h3.get("taskDefaults"))
+    if render_width is not None:
+        if (render_width > task_defaults["width"] or render_height > task_defaults["height"]
+                or render_width * task_defaults["height"] != render_height * task_defaults["width"]):
+            raise ValueError("h3.taskDefaults output must fit fixed internal render size and aspect")
     return ServerConfig(
         api_host=api_host,
         api_port=api_port,
@@ -202,6 +239,8 @@ def load_config(path: Path) -> ServerConfig:
         tokens=tuple(tokens),
         max_concurrent_jobs=_positive_int(resources.get("maxConcurrentJobs"), "resources.maxConcurrentJobs"),
         log_level=logging.getLevelNamesMapping()[log_level_name.upper()],
-        hardware_args=_hardware_args(h3.get("hardwareArgs", [])),
-        task_defaults=_task_defaults(h3.get("taskDefaults")),
+        hardware_args=hardware_args,
+        render_width=render_width,
+        render_height=render_height,
+        task_defaults=task_defaults,
     )
