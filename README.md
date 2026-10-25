@@ -8,12 +8,12 @@
 uv venv --python 3.11
 uv pip install --python .venv/bin/python -e .
 cp config.example.json config.json
-# 编辑 config.json 中的绝对路径与 token，设文件权限为 0600
+# 编辑 config.json 中的 h3 路径、数据目录和 token，设文件权限为 0600
 chmod 600 config.json
-.venv/bin/minimax-h3-server --config config.json
+./startServer.sh
 ```
 
-启动前需要 h3.c 可执行文件、模型目录、工作目录中的 `h3_shaders.metal`，以及 `PATH` 中的 FFmpeg 和 FFprobe。API 监听地址由配置决定；后台只监听 `127.0.0.1`。两个监听器共用任务协调器与 SQLite；停服时正在烧制的 h3 进程继续运行，重启后恢复状态与制品结算。
+当前这台机器已创建 `config.json` 和独立的 `localData/{db,uploads,artifacts,logs}`；其他机器克隆后需按上面的步骤复制示例配置并填写本机路径与 token。配置文件和数据目录均被 Git 忽略。`startServer.sh` 可从任意工作目录调用，会定位项目目录并检查虚拟环境、配置文件和 FFmpeg 工具，然后启动服务。启动前需要 h3.c 可执行文件、模型目录、工作目录中的 `h3_shaders.metal`，以及 `PATH` 中的 FFmpeg 和 FFprobe。API 监听地址由配置决定；后台只监听 `127.0.0.1`。两个监听器共用任务协调器与 SQLite；停服时正在烧制的 h3 进程继续运行，重启后恢复状态与制品结算。
 
 API 使用配置文件中的 Bearer Token；本机后台在 `http://127.0.0.1:8788/`（或配置的 `admin.port`）用同一 Token 登录。创建任务用 `POST /v1/tasks` multipart，包含一个 JSON `request` part 和按 `fileKey` 命名的素材 part。`GET /v1/capabilities` 提供参数范围与默认值，其他接口和请求结构见 [设计文档](design.md)。
 
